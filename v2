@@ -1,0 +1,529 @@
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+
+public class Mouse {
+    [DllImport("user32.dll")]
+    public static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, IntPtr dwExtraInfo);
+
+    [DllImport("user32.dll")]
+    public static extern bool SetCursorPos(int x, int y);
+
+    [DllImport("user32.dll")]
+    public static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
+
+    [DllImport("user32.dll")]
+    public static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+
+    public const uint MOUSEEVENTF_LEFTDOWN = 0x02;
+    public const uint MOUSEEVENTF_LEFTUP = 0x04;
+    public const uint MOUSEEVENTF_RIGHTDOWN = 0x08;
+    public const uint MOUSEEVENTF_RIGHTUP = 0x10;
+    public const uint MOUSEEVENTF_MIDDLEDOWN = 0x20;
+    public const uint MOUSEEVENTF_MIDDLEUP = 0x40;
+
+    public const int WM_HOTKEY = 0x0312;
+}
+"@
+
+Function Click-Mouse {
+    param([string]$button = "left", [float]$hold = 0)
+    switch ($button) {
+        "left" {
+            [Mouse]::mouse_event([Mouse]::MOUSEEVENTF_LEFTDOWN, 0, 0, 0, [IntPtr]::Zero)
+            if ($hold -gt 0) { Start-Sleep -Seconds $hold }
+            [Mouse]::mouse_event([Mouse]::MOUSEEVENTF_LEFTUP, 0, 0, 0, [IntPtr]::Zero)
+        }
+        "right" {
+            [Mouse]::mouse_event([Mouse]::MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, [IntPtr]::Zero)
+            if ($hold -gt 0) { Start-Sleep -Seconds $hold }
+            [Mouse]::mouse_event([Mouse]::MOUSEEVENTF_RIGHTUP, 0, 0, 0, [IntPtr]::Zero)
+        }
+        "middle" {
+            [Mouse]::mouse_event([Mouse]::MOUSEEVENTF_MIDDLEDOWN, 0, 0, 0, [IntPtr]::Zero)
+            if ($hold -gt 0) { Start-Sleep -Seconds $hold }
+            [Mouse]::mouse_event([Mouse]::MOUSEEVENTF_MIDDLEUP, 0, 0, 0, [IntPtr]::Zero)
+        }
+    }
+}
+
+param(
+    [float]$interval = 1.0,
+    [string]$button = "left",
+    [int]$clicks = -1,
+    [int]$x = -1,
+    [int]$y = -1,
+    [float]$randomize = 0.0,
+    [int]$clickType = 1,
+    [float]$holdTime = 0.0,
+    [int]$randomOffset = 0
+)
+
+if ($PSBoundParameters.Count -eq 0) {
+    # GUI Mode
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+
+    $form = New-Object System.Windows.Forms.Form
+    $form.Text = "Autoclicker v1.0"
+    $form.Size = New-Object System.Drawing.Size(450, 550)
+    $form.StartPosition = "CenterScreen"
+
+    $tooltip = New-Object System.Windows.Forms.ToolTip
+    $form.Controls.Add($tooltip)
+
+    # Interval
+    $labelInterval = New-Object System.Windows.Forms.Label
+    $labelInterval.Text = "Interval (seconds):"
+    $labelInterval.Location = New-Object System.Drawing.Point(10, 10)
+    $labelInterval.Size = New-Object System.Drawing.Size(120, 20)
+    $form.Controls.Add($labelInterval)
+
+    $textInterval = New-Object System.Windows.Forms.TextBox
+    $textInterval.Text = "1.0"
+    $textInterval.Location = New-Object System.Drawing.Point(140, 10)
+    $textInterval.Size = New-Object System.Drawing.Size(100, 20)
+    $form.Controls.Add($textInterval)
+    $tooltip.SetToolTip($textInterval, "Time in seconds between each click. Must be positive.")
+
+    # Button
+    $labelButton = New-Object System.Windows.Forms.Label
+    $labelButton.Text = "Button:"
+    $labelButton.Location = New-Object System.Drawing.Point(10, 40)
+    $labelButton.Size = New-Object System.Drawing.Size(50, 20)
+    $form.Controls.Add($labelButton)
+
+    $comboButton = New-Object System.Windows.Forms.ComboBox
+    $comboButton.Items.AddRange(@("left", "right", "middle"))
+    $comboButton.SelectedIndex = 0
+    $comboButton.Location = New-Object System.Drawing.Point(70, 40)
+    $comboButton.Size = New-Object System.Drawing.Size(80, 20)
+    $form.Controls.Add($comboButton)
+    $tooltip.SetToolTip($comboButton, "Mouse button to click.")
+
+    # Hotkey
+    $labelHotkey = New-Object System.Windows.Forms.Label
+    $labelHotkey.Text = "Hotkey:"
+    $labelHotkey.Location = New-Object System.Drawing.Point(160, 40)
+    $labelHotkey.Size = New-Object System.Drawing.Size(50, 20)
+    $form.Controls.Add($labelHotkey)
+
+    $comboHotkey = New-Object System.Windows.Forms.ComboBox
+    $comboHotkey.Items.AddRange(@("F1","F2","F3","F4","F5","F6","F7","F8","F9","F10","F11","F12"))
+    $comboHotkey.SelectedIndex = 5  # F6
+    $comboHotkey.Location = New-Object System.Drawing.Point(210, 40)
+    $comboHotkey.Size = New-Object System.Drawing.Size(60, 20)
+    $form.Controls.Add($comboHotkey)
+    $tooltip.SetToolTip($comboHotkey, "Global hotkey to toggle start/stop.")
+
+    # Clicks
+    $checkInfinite = New-Object System.Windows.Forms.CheckBox
+    $checkInfinite.Text = "Infinite clicks"
+    $checkInfinite.Location = New-Object System.Drawing.Point(10, 70)
+    $checkInfinite.Checked = $true
+    $form.Controls.Add($checkInfinite)
+    $tooltip.SetToolTip($checkInfinite, "Check for unlimited clicks, uncheck to set a limit.")
+
+    $textClicks = New-Object System.Windows.Forms.TextBox
+    $textClicks.Text = "10"
+    $textClicks.Location = New-Object System.Drawing.Point(140, 70)
+    $textClicks.Size = New-Object System.Drawing.Size(100, 20)
+    $textClicks.Enabled = $false
+    $form.Controls.Add($textClicks)
+    $tooltip.SetToolTip($textClicks, "Number of clicks to perform.")
+
+    $checkInfinite.Add_CheckedChanged({ $textClicks.Enabled = !$this.Checked })
+
+    # Position
+    $radioCurrent = New-Object System.Windows.Forms.RadioButton
+    $radioCurrent.Text = "Current position"
+    $radioCurrent.Location = New-Object System.Drawing.Point(10, 100)
+    $radioCurrent.Checked = $true
+    $form.Controls.Add($radioCurrent)
+    $tooltip.SetToolTip($radioCurrent, "Click at the current mouse cursor position.")
+
+    $radioFixed = New-Object System.Windows.Forms.RadioButton
+    $radioFixed.Text = "Fixed position"
+    $radioFixed.Location = New-Object System.Drawing.Point(10, 120)
+    $form.Controls.Add($radioFixed)
+    $tooltip.SetToolTip($radioFixed, "Click at specific coordinates.")
+
+    $labelX = New-Object System.Windows.Forms.Label
+    $labelX.Text = "X:"
+    $labelX.Location = New-Object System.Drawing.Point(30, 145)
+    $labelX.Size = New-Object System.Drawing.Size(20, 20)
+    $form.Controls.Add($labelX)
+
+    $textX = New-Object System.Windows.Forms.TextBox
+    $textX.Text = "0"
+    $textX.Location = New-Object System.Drawing.Point(50, 145)
+    $textX.Size = New-Object System.Drawing.Size(60, 20)
+    $textX.Enabled = $false
+    $form.Controls.Add($textX)
+    $tooltip.SetToolTip($textX, "X coordinate for fixed position.")
+
+    $labelY = New-Object System.Windows.Forms.Label
+    $labelY.Text = "Y:"
+    $labelY.Location = New-Object System.Drawing.Point(120, 145)
+    $labelY.Size = New-Object System.Drawing.Size(20, 20)
+    $form.Controls.Add($labelY)
+
+    $textY = New-Object System.Windows.Forms.TextBox
+    $textY.Text = "0"
+    $textY.Location = New-Object System.Drawing.Point(140, 145)
+    $textY.Size = New-Object System.Drawing.Size(60, 20)
+    $textY.Enabled = $false
+    $form.Controls.Add($textY)
+    $tooltip.SetToolTip($textY, "Y coordinate for fixed position.")
+
+    $radioFixed.Add_CheckedChanged({
+        $textX.Enabled = $this.Checked
+        $textY.Enabled = $this.Checked
+    })
+
+    # Randomize
+    $labelRandomize = New-Object System.Windows.Forms.Label
+    $labelRandomize.Text = "Randomize (sec):"
+    $labelRandomize.Location = New-Object System.Drawing.Point(10, 175)
+    $labelRandomize.Size = New-Object System.Drawing.Size(120, 20)
+    $form.Controls.Add($labelRandomize)
+
+    $textRandomize = New-Object System.Windows.Forms.TextBox
+    $textRandomize.Text = "0.0"
+    $textRandomize.Location = New-Object System.Drawing.Point(140, 175)
+    $textRandomize.Size = New-Object System.Drawing.Size(100, 20)
+    $form.Controls.Add($textRandomize)
+    $tooltip.SetToolTip($textRandomize, "Max random time added to interval for natural variation.")
+
+    # Click Type
+    $labelClickType = New-Object System.Windows.Forms.Label
+    $labelClickType.Text = "Click Type (1=single, 2=double):"
+    $labelClickType.Location = New-Object System.Drawing.Point(10, 205)
+    $labelClickType.Size = New-Object System.Drawing.Size(180, 20)
+    $form.Controls.Add($labelClickType)
+
+    $textClickType = New-Object System.Windows.Forms.TextBox
+    $textClickType.Text = "1"
+    $textClickType.Location = New-Object System.Drawing.Point(200, 205)
+    $textClickType.Size = New-Object System.Drawing.Size(40, 20)
+    $form.Controls.Add($textClickType)
+    $tooltip.SetToolTip($textClickType, "Number of clicks per action.")
+
+    # Hold Time
+    $labelHoldTime = New-Object System.Windows.Forms.Label
+    $labelHoldTime.Text = "Hold Time (sec):"
+    $labelHoldTime.Location = New-Object System.Drawing.Point(10, 235)
+    $labelHoldTime.Size = New-Object System.Drawing.Size(120, 20)
+    $form.Controls.Add($labelHoldTime)
+
+    $textHoldTime = New-Object System.Windows.Forms.TextBox
+    $textHoldTime.Text = "0.0"
+    $textHoldTime.Location = New-Object System.Drawing.Point(140, 235)
+    $textHoldTime.Size = New-Object System.Drawing.Size(100, 20)
+    $form.Controls.Add($textHoldTime)
+    $tooltip.SetToolTip($textHoldTime, "Time to hold the button down.")
+
+    # Random Offset
+    $labelRandomOffset = New-Object System.Windows.Forms.Label
+    $labelRandomOffset.Text = "Random Offset (pixels):"
+    $labelRandomOffset.Location = New-Object System.Drawing.Point(10, 265)
+    $labelRandomOffset.Size = New-Object System.Drawing.Size(150, 20)
+    $form.Controls.Add($labelRandomOffset)
+
+    $textRandomOffset = New-Object System.Windows.Forms.TextBox
+    $textRandomOffset.Text = "0"
+    $textRandomOffset.Location = New-Object System.Drawing.Point(170, 265)
+    $textRandomOffset.Size = New-Object System.Drawing.Size(70, 20)
+    $form.Controls.Add($textRandomOffset)
+    $tooltip.SetToolTip($textRandomOffset, "Max random offset for click position.")
+
+    # Time Limit
+    $checkTimeLimit = New-Object System.Windows.Forms.CheckBox
+    $checkTimeLimit.Text = "Run for specific time"
+    $checkTimeLimit.Location = New-Object System.Drawing.Point(10, 295)
+    $form.Controls.Add($checkTimeLimit)
+    $tooltip.SetToolTip($checkTimeLimit, "Automatically stop after the set time.")
+
+    $labelTime = New-Object System.Windows.Forms.Label
+    $labelTime.Text = "HH:MM:SS"
+    $labelTime.Location = New-Object System.Drawing.Point(10, 320)
+    $labelTime.Size = New-Object System.Drawing.Size(60, 20)
+    $form.Controls.Add($labelTime)
+
+    $textHours = New-Object System.Windows.Forms.TextBox
+    $textHours.Text = "00"
+    $textHours.Location = New-Object System.Drawing.Point(70, 320)
+    $textHours.Size = New-Object System.Drawing.Size(30, 20)
+    $textHours.Enabled = $false
+    $form.Controls.Add($textHours)
+    $tooltip.SetToolTip($textHours, "Hours for time limit.")
+
+    $textMinutes = New-Object System.Windows.Forms.TextBox
+    $textMinutes.Text = "00"
+    $textMinutes.Location = New-Object System.Drawing.Point(105, 320)
+    $textMinutes.Size = New-Object System.Drawing.Size(30, 20)
+    $textMinutes.Enabled = $false
+    $form.Controls.Add($textMinutes)
+    $tooltip.SetToolTip($textMinutes, "Minutes for time limit.")
+
+    $textSeconds = New-Object System.Windows.Forms.TextBox
+    $textSeconds.Text = "00"
+    $textSeconds.Location = New-Object System.Drawing.Point(140, 320)
+    $textSeconds.Size = New-Object System.Drawing.Size(30, 20)
+    $textSeconds.Enabled = $false
+    $form.Controls.Add($textSeconds)
+    $tooltip.SetToolTip($textSeconds, "Seconds for time limit.")
+
+    $checkTimeLimit.Add_CheckedChanged({
+        $textHours.Enabled = $this.Checked
+        $textMinutes.Enabled = $this.Checked
+        $textSeconds.Enabled = $this.Checked
+    })
+
+    # Status
+    $labelStatus = New-Object System.Windows.Forms.Label
+    $labelStatus.Text = "Stopped"
+    $labelStatus.Location = New-Object System.Drawing.Point(10, 350)
+    $labelStatus.Size = New-Object System.Drawing.Size(200, 20)
+    $form.Controls.Add($labelStatus)
+
+    # Start Button
+    $buttonStart = New-Object System.Windows.Forms.Button
+    $buttonStart.Text = "Start"
+    $buttonStart.Location = New-Object System.Drawing.Point(10, 380)
+    $buttonStart.Size = New-Object System.Drawing.Size(80, 30)
+    $form.Controls.Add($buttonStart)
+
+    # Stop Button
+    $buttonStop = New-Object System.Windows.Forms.Button
+    $buttonStop.Text = "Stop"
+    $buttonStop.Location = New-Object System.Drawing.Point(100, 380)
+    $buttonStop.Size = New-Object System.Drawing.Size(80, 30)
+    $form.Controls.Add($buttonStop)
+
+    # Help Button
+    $buttonHelp = New-Object System.Windows.Forms.Button
+    $buttonHelp.Text = "Help"
+    $buttonHelp.Location = New-Object System.Drawing.Point(190, 380)
+    $buttonHelp.Size = New-Object System.Drawing.Size(80, 30)
+    $form.Controls.Add($buttonHelp)
+    $tooltip.SetToolTip($buttonHelp, "Show help information.")
+
+    $buttonHelp.Add_Click({
+        [System.Windows.Forms.MessageBox]::Show(@"
+Autoclicker Help:
+
+1. Configure your settings (interval, button, etc.).
+2. Click 'Start' to begin clicking.
+3. Use the hotkey to toggle on/off anytime.
+4. If time limit is set, it will auto-stop.
+5. Click 'Stop' to end manually.
+
+Tips:
+- Hover over controls for tooltips.
+- Ensure inputs are valid numbers.
+- Hotkey works globally when running.
+"@, "Help")
+    })
+
+    Function Start-Clicking {
+        try {
+            # Validation
+            $intervalVal = 0.0
+            if (-not [float]::TryParse($textInterval.Text, [ref]$intervalVal) -or $intervalVal -le 0) {
+                throw "Invalid interval: must be positive number"
+            }
+            $randomizeVal = 0.0
+            if (-not [float]::TryParse($textRandomize.Text, [ref]$randomizeVal) -or $randomizeVal -lt 0) {
+                throw "Invalid randomize: must be non-negative number"
+            }
+            $clickTypeVal = 1
+            if (-not [int]::TryParse($textClickType.Text, [ref]$clickTypeVal) -or $clickTypeVal -lt 1) {
+                throw "Invalid click type: must be positive integer"
+            }
+            $holdTimeVal = 0.0
+            if (-not [float]::TryParse($textHoldTime.Text, [ref]$holdTimeVal) -or $holdTimeVal -lt 0) {
+                throw "Invalid hold time: must be non-negative number"
+            }
+            $randomOffsetVal = 0
+            if (-not [int]::TryParse($textRandomOffset.Text, [ref]$randomOffsetVal) -or $randomOffsetVal -lt 0) {
+                throw "Invalid random offset: must be non-negative integer"
+            }
+            $clicksVal = -1
+            if (-not $checkInfinite.Checked) {
+                if (-not [int]::TryParse($textClicks.Text, [ref]$clicksVal) -or $clicksVal -le 0) {
+                    throw "Invalid clicks: must be positive integer"
+                }
+            }
+            $xVal = -1
+            $yVal = -1
+            if ($radioFixed.Checked) {
+                if (-not [int]::TryParse($textX.Text, [ref]$xVal)) {
+                    throw "Invalid X coordinate"
+                }
+                if (-not [int]::TryParse($textY.Text, [ref]$yVal)) {
+                    throw "Invalid Y coordinate"
+                }
+            }
+            $totalSecondsVal = 0
+            if ($checkTimeLimit.Checked) {
+                $hours = 0; $mins = 0; $secs = 0
+                if (-not [int]::TryParse($textHours.Text, [ref]$hours) -or $hours -lt 0) { throw "Invalid hours" }
+                if (-not [int]::TryParse($textMinutes.Text, [ref]$mins) -or $mins -lt 0 -or $mins -gt 59) { throw "Invalid minutes" }
+                if (-not [int]::TryParse($textSeconds.Text, [ref]$secs) -or $secs -lt 0 -or $secs -gt 59) { throw "Invalid seconds" }
+                $totalSecondsVal = $hours * 3600 + $mins * 60 + $secs
+                if ($totalSecondsVal -le 0) { throw "Time limit must be greater than 0" }
+            }
+
+            $buttonVal = $comboButton.SelectedItem
+            $hotkeyVal = $comboHotkey.SelectedItem
+            $vk = switch ($hotkeyVal) {
+                "F1" { 112 }
+                "F2" { 113 }
+                "F3" { 114 }
+                "F4" { 115 }
+                "F5" { 116 }
+                "F6" { 117 }
+                "F7" { 118 }
+                "F8" { 119 }
+                "F9" { 120 }
+                "F10" { 121 }
+                "F11" { 122 }
+                "F12" { 123 }
+            }
+            [Mouse]::RegisterHotKey($form.Handle, 1, 0, $vk)
+
+            $script:job = Start-Job -ScriptBlock {
+                param($interval, $button, $clicks, $x, $y, $randomize, $clickType, $holdTime, $randomOffset, $totalSeconds)
+
+                Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class Mouse {
+    [DllImport("user32.dll")]
+    public static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, IntPtr dwExtraInfo);
+    [DllImport("user32.dll")]
+    public static extern bool SetCursorPos(int x, int y);
+    public const uint MOUSEEVENTF_LEFTDOWN = 0x02;
+    public const uint MOUSEEVENTF_LEFTUP = 0x04;
+    public const uint MOUSEEVENTF_RIGHTDOWN = 0x08;
+    public const uint MOUSEEVENTF_RIGHTUP = 0x10;
+    public const uint MOUSEEVENTF_MIDDLEDOWN = 0x20;
+    public const uint MOUSEEVENTF_MIDDLEUP = 0x40;
+}
+"@
+
+                Function Click-Mouse {
+                    param([string]$button = "left", [float]$hold = 0)
+                    switch ($button) {
+                        "left" {
+                            [Mouse]::mouse_event([Mouse]::MOUSEEVENTF_LEFTDOWN, 0, 0, 0, [IntPtr]::Zero)
+                            if ($hold -gt 0) { Start-Sleep -Seconds $hold }
+                            [Mouse]::mouse_event([Mouse]::MOUSEEVENTF_LEFTUP, 0, 0, 0, [IntPtr]::Zero)
+                        }
+                        "right" {
+                            [Mouse]::mouse_event([Mouse]::MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, [IntPtr]::Zero)
+                            if ($hold -gt 0) { Start-Sleep -Seconds $hold }
+                            [Mouse]::mouse_event([Mouse]::MOUSEEVENTF_RIGHTUP, 0, 0, 0, [IntPtr]::Zero)
+                        }
+                        "middle" {
+                            [Mouse]::mouse_event([Mouse]::MOUSEEVENTF_MIDDLEDOWN, 0, 0, 0, [IntPtr]::Zero)
+                            if ($hold -gt 0) { Start-Sleep -Seconds $hold }
+                            [Mouse]::mouse_event([Mouse]::MOUSEEVENTF_MIDDLEUP, 0, 0, 0, [IntPtr]::Zero)
+                        }
+                    }
+                }
+
+                $stopwatch = if ($totalSeconds -gt 0) { [System.Diagnostics.Stopwatch]::StartNew() } else { $null }
+                $count = 0
+                while ($true) {
+                    if ($totalSeconds -gt 0 -and $stopwatch.Elapsed.TotalSeconds -ge $totalSeconds) { break }
+                    if ($randomOffset -gt 0) {
+                        $rx = Get-Random -Min (-$randomOffset) -Max $randomOffset
+                        $ry = Get-Random -Min (-$randomOffset) -Max $randomOffset
+                        $cx = if ($x -ne -1) { $x + $rx } else { -1 }
+                        $cy = if ($y -ne -1) { $y + $ry } else { -1 }
+                    } else {
+                        $cx = $x
+                        $cy = $y
+                    }
+                    if ($cx -ne -1 -and $cy -ne -1) {
+                        [Mouse]::SetCursorPos($cx, $cy)
+                    }
+                    for ($i = 0; $i -lt $clickType; $i++) {
+                        Click-Mouse -button $button -hold $holdTime
+                        if ($i -lt $clickType - 1) { Start-Sleep -Milliseconds 100 }
+                    }
+                    $count++
+                    if ($clicks -ne -1 -and $count -ge $clicks) { break }
+                    $sleepTime = $interval + (Get-Random -Minimum 0 -Maximum $randomize)
+                    Start-Sleep -Seconds $sleepTime
+                }
+            } -ArgumentList $intervalVal, $buttonVal, $clicksVal, $xVal, $yVal, $randomizeVal, $clickTypeVal, $holdTimeVal, $randomOffsetVal, $totalSecondsVal
+
+            $labelStatus.Text = "Running..."
+        } catch {
+            [System.Windows.Forms.MessageBox]::Show("Error: " + $_.Exception.Message, "Input Error")
+        }
+    }
+
+    Function Toggle-Clicking {
+        if ($script:job) {
+            Stop-Job $script:job -ErrorAction SilentlyContinue
+            Remove-Job $script:job -ErrorAction SilentlyContinue
+            $script:job = $null
+            $labelStatus.Text = "Stopped"
+            [Mouse]::UnregisterHotKey($form.Handle, 1)
+        } else {
+            Start-Clicking
+        }
+    }
+
+    $buttonStart.Add_Click({ Start-Clicking })
+
+    $buttonStop.Add_Click({
+        if ($script:job) {
+            Stop-Job $script:job -ErrorAction SilentlyContinue
+            Remove-Job $script:job -ErrorAction SilentlyContinue
+            $script:job = $null
+        }
+        $labelStatus.Text = "Stopped"
+        [Mouse]::UnregisterHotKey($form.Handle, 1)
+    })
+
+    $form.Add_WndProc({
+        param($m)
+        if ($m.Msg -eq [Mouse]::WM_HOTKEY) {
+            Toggle-Clicking
+        }
+    })
+
+    [void]$form.ShowDialog()
+} else {
+    # CLI Mode
+    Write-Host "Autoclicker started. Press Ctrl+C to stop."
+    $count = 0
+    while ($true) {
+        # Calculate position with random offset
+        if ($randomOffset -gt 0) {
+            $rx = Get-Random -Min (-$randomOffset) -Max $randomOffset
+            $ry = Get-Random -Min (-$randomOffset) -Max $randomOffset
+            $cx = if ($x -ne -1) { $x + $rx } else { -1 }
+            $cy = if ($y -ne -1) { $y + $ry } else { -1 }
+        } else {
+            $cx = $x
+            $cy = $y
+        }
+        if ($cx -ne -1 -and $cy -ne -1) {
+            [Mouse]::SetCursorPos($cx, $cy)
+        }
+        for ($i = 0; $i -lt $clickType; $i++) {
+            Click-Mouse -button $button -hold $holdTime
+            if ($i -lt $clickType - 1) { Start-Sleep -Milliseconds 100 }  # small delay for multi-click
+        }
+        $count++
+        if ($clicks -ne -1 -and $count -ge $clicks) { break }
+        $sleepTime = $interval + (Get-Random -Minimum 0 -Maximum $randomize)
+        Start-Sleep -Seconds $sleepTime
+    }
+}
