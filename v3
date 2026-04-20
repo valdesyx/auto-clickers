@@ -1,6 +1,24 @@
+param(
+    [float]$interval = 1.0,
+    [string]$button = "left",
+    [int]$clicks = -1,
+    [int]$x = -1,
+    [int]$y = -1,
+    [float]$randomize = 0.0,
+    [int]$clickType = 1,
+    [float]$holdTime = 0.0,
+    [int]$randomOffset = 0
+)
+
 Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
+
+[StructLayout(LayoutKind.Sequential)]
+public struct POINT {
+    public int X;
+    public int Y;
+}
 
 public class Mouse {
     [DllImport("user32.dll")]
@@ -8,6 +26,9 @@ public class Mouse {
 
     [DllImport("user32.dll")]
     public static extern bool SetCursorPos(int x, int y);
+
+    [DllImport("user32.dll")]
+    public static extern bool GetCursorPos(out POINT lpPoint);
 
     [DllImport("user32.dll")]
     public static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
@@ -26,7 +47,7 @@ public class Mouse {
 }
 "@
 
-Function Click-Mouse {
+Function Invoke-Click {
     param([string]$button = "left", [float]$hold = 0)
     switch ($button) {
         "left" {
@@ -46,18 +67,6 @@ Function Click-Mouse {
         }
     }
 }
-
-param(
-    [float]$interval = 1.0,
-    [string]$button = "left",
-    [int]$clicks = -1,
-    [int]$x = -1,
-    [int]$y = -1,
-    [float]$randomize = 0.0,
-    [int]$clickType = 1,
-    [float]$holdTime = 0.0,
-    [int]$randomOffset = 0
-)
 
 if ($PSBoundParameters.Count -eq 0) {
     # GUI Mode
@@ -179,6 +188,25 @@ if ($PSBoundParameters.Count -eq 0) {
     $radioFixed.Add_CheckedChanged({
         $textX.Enabled = $this.Checked
         $textY.Enabled = $this.Checked
+    })
+
+    $buttonGetPos = New-Object System.Windows.Forms.Button
+    $buttonGetPos.Text = "Get Pos"
+    $buttonGetPos.Location = New-Object System.Drawing.Point(210, 145)
+    $buttonGetPos.Size = New-Object System.Drawing.Size(60, 20)
+    $buttonGetPos.Enabled = $false
+    $form.Controls.Add($buttonGetPos)
+    $tooltip.SetToolTip($buttonGetPos, "Get current mouse position.")
+
+    $buttonGetPos.Add_Click({
+        $point = New-Object POINT
+        [Mouse]::GetCursorPos([ref]$point)
+        $textX.Text = $point.X.ToString()
+        $textY.Text = $point.Y.ToString()
+    })
+
+    $radioFixed.Add_CheckedChanged({
+        $buttonGetPos.Enabled = $this.Checked
     })
 
     # Randomize
@@ -413,7 +441,7 @@ public class Mouse {
 }
 "@
 
-                Function Click-Mouse {
+                Function Invoke-Click {
                     param([string]$button = "left", [float]$hold = 0)
                     switch ($button) {
                         "left" {
@@ -451,7 +479,7 @@ public class Mouse {
                         [Mouse]::SetCursorPos($cx, $cy)
                     }
                     for ($i = 0; $i -lt $clickType; $i++) {
-                        Click-Mouse -button $button -hold $holdTime
+                        Invoke-Click -button $button -hold $holdTime
                         if ($i -lt $clickType - 1) { Start-Sleep -Milliseconds 100 }
                     }
                     $count++
@@ -467,7 +495,7 @@ public class Mouse {
         }
     }
 
-    Function Toggle-Clicking {
+    Function Switch-Clicking {
         if ($script:job) {
             Stop-Job $script:job -ErrorAction SilentlyContinue
             Remove-Job $script:job -ErrorAction SilentlyContinue
@@ -494,7 +522,7 @@ public class Mouse {
     $form.Add_WndProc({
         param($m)
         if ($m.Msg -eq [Mouse]::WM_HOTKEY) {
-            Toggle-Clicking
+            Switch-Clicking
         }
     })
 
@@ -518,7 +546,7 @@ public class Mouse {
             [Mouse]::SetCursorPos($cx, $cy)
         }
         for ($i = 0; $i -lt $clickType; $i++) {
-            Click-Mouse -button $button -hold $holdTime
+            Invoke-Click -button $button -hold $holdTime
             if ($i -lt $clickType - 1) { Start-Sleep -Milliseconds 100 }  # small delay for multi-click
         }
         $count++
