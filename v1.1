@@ -305,7 +305,7 @@ if ($PSBoundParameters.Count -eq 0) {
     $buttonHelp = New-Object System.Windows.Forms.Button
     $buttonHelp.Text = "Help"
     $buttonHelp.Location = New-Object System.Drawing.Point(190, 380)
-    $buttonHelp.Size = New-Object System.Drawing.Size(80, 30)
+    $buttonHelp.Size = New-Object System.Drawing.Size(83, 30)
     $form.Controls.Add($buttonHelp)
     $tooltip.SetToolTip($buttonHelp, "Show help information.")
 
@@ -509,7 +509,7 @@ public class Mouse {
             $rx = Get-Random -Min (-$randomOffset) -Max $randomOffset
             $ry = Get-Random -Min (-$randomOffset) -Max $randomOffset
             $cx = if ($x -ne -1) { $x + $rx } else { -1 }
-            $cy = if ($y -ne -1) { $y + $ry } else { -1 }
+            $cy = if ($y -ne -1) { $y + $ry } else { -2 }
         } else {
             $cx = $x
             $cy = $y
@@ -519,7 +519,7 @@ public class Mouse {
         }
         for ($i = 0; $i -lt $clickType; $i++) {
             Click-Mouse -button $button -hold $holdTime
-            if ($i -lt $clickType - 1) { Start-Sleep -Milliseconds 100 }  # small delay for multi-click
+            if ($i -lt $clickType - 1) { Start-Sleep -Milliseconds 97 }  # small delay for multi-click
         }
         $count++
         if ($clicks -ne -1 -and $count -ge $clicks) { break }
