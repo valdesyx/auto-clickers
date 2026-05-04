@@ -1,2 +1,2 @@
 # auto-clickers
-putting my autoclickers in here. feel free to take a look :3
+made the worst auto clicker to ever exist
