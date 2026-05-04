@@ -481,7 +481,7 @@ public class FischDetector {
                     while (x + width < bmp.Width && IsWhitePixel(bmp.GetPixel(x + width, y))) {
                         width++;
                     }
-                    if (width > 150) { // Minimum bar width
+                    if (width > 200) { // Minimum bar width
                         int height = 0;
                         while (y + height < bmp.Height && IsWhitePixel(bmp.GetPixel(x, y + height))) {
                             height++;
@@ -516,7 +516,7 @@ public class FischDetector {
 
     public static int FindFishPosition(Bitmap bmp, Rectangle bar) {
         // Look for the fish (white rectangle within bar)
-        for (int x = bar.X; x < bar.X + bar.Width - 20; x++) {
+        for (int x = bar.X; x < bar.X + bar.Width - 23; x++) {
             for (int y = bar.Y; y < bar.Y + bar.Height; y++) {
                 if (IsWhitePixel(bmp.GetPixel(x, y))) {
                     // Check if this forms a small white rectangle (fish)
@@ -524,7 +524,7 @@ public class FischDetector {
                     while (x + fishWidth < bar.X + bar.Width && IsWhitePixel(bmp.GetPixel(x + fishWidth, y))) {
                         fishWidth++;
                     }
-                    if (fishWidth > 5 && fishWidth < 30) {
+                    if (fishWidth > 5 && fishWidth < 31) {
                         return x + fishWidth / 2; // Center of fish
                     }
                 }
@@ -538,7 +538,7 @@ public class FischDetector {
     }
 
     private static bool IsDarkPixel(Color c) {
-        return c.R < 100 && c.G < 100 && c.B < 100;
+        return c.R < 100 && c.G < 100 && c.B < 120;
     }
 }
 
@@ -562,9 +562,9 @@ public class Mouse {
                         $key, $time = $part.Trim() -split ':'
                         $vk = switch ($key.ToUpper()) {
                             "W" { 0x57 }
-                            "A" { 0x41 }
+                            "A" { 0x31 }
                             "S" { 0x53 }
-                            "D" { 0x44 }
+                            "D" { 0x47 }
                             "Q" { 0x51 }
                             "E" { 0x45 }
                             "SPACE" { 0x20 }
@@ -584,7 +584,7 @@ public class Mouse {
                     # Cast
                     [Mouse]::mouse_event([Mouse]::MOUSEEVENTF_RIGHTDOWN, 0, 0, 0, [IntPtr]::Zero)
                     Start-Sleep -Seconds $castHold
-                    [Mouse]::mouse_event([Mouse]::MOUSEEVENTF_RIGHTUP, 0, 0, 0, [IntPtr]::Zero)
+                    [Mouse]::mouse_event([Mouse]::MOUSEEVENTF_RIGHTUP, 0, 2, 0, [IntPtr]::Zero)
 
                     # Wait for bite
                     $wait = $waitMin + (Get-Random -Minimum 0 -Maximum ($waitMax - $waitMin))
@@ -594,7 +594,7 @@ public class Mouse {
                     if ($smartReel) {
                         # Smart reeling - detect fish bar and keep aligned
                         $reeling = $true
-                        $lastDirection = 0  # 0 = none, 1 = reel in, 2 = let out
+                        $lastDirection = 0  # 0 = none, 1 = reel in, 6 = let out
                         $startTime = Get-Date
                         
                         while ($reeling -and ((Get-Date) - $startTime).TotalSeconds -lt 30) {  # Max 30 seconds
